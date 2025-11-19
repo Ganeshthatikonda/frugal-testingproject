@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Quiz Master</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Chart.js for result analysis -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Custom styles for the timer bar */
+        #timer-bar {
+            height: 8px;
+            transition: width 0.1s linear, background-color 0.5s ease;
+        }
+        /* Custom font */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <!-- Main Application Container -->
+    <div id="quiz-app" class="w-full max-w-2xl bg-white shadow-2xl rounded-xl p-8 transition-all duration-500">
+        
+        <!-- Screen 1: Configuration/Start Screen -->
+        <div id="config-screen" class="space-y-6">
+            <h1 class="text-4xl font-extrabold text-gray-900 text-center mb-6">Quiz Master Setup</h1>
+            
+            <div class="space-y-4">
+                <label for="category" class="block text-lg font-medium text-gray-700">Select Category:</label>
+                <select id="category" class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out">
+                    <option value="all">All Categories</option>
+                    <option value="science">Science</option>
+                    <option value="history">History</option>
+                    <option value="tech">Technology</option>
+                </select>
+            </div>
+
+            <div class="space-y-4">
+                <label for="difficulty" class="block text-lg font-medium text-gray-700">Select Difficulty:</label>
+                <select id="difficulty" class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out">
+                    <option value="all">All Difficulties</option>
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                </select>
+            </div>
+
+            <button onclick="startQuiz()" id="start-quiz-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transform transition duration-200 ease-in-out hover:scale-[1.02] active:scale-[0.98]">
+                Start Quiz
+            </button>
+        </div>
+
+        <!-- Screen 2: Quiz Display Screen -->
+        <div id="quiz-screen" class="hidden space-y-6">
+            
+            <!-- Timer Bar -->
+            <div class="mb-4">
+                <div id="timer-bar" class="w-full bg-green-500 rounded-full"></div>
+            </div>
+
+            <!-- Question Counter and Question Text -->
+            <div class="bg-blue-50 p-4 rounded-lg shadow-inner">
+                <p id="question-counter" class="text-sm font-semibold text-blue-600 mb-2">Question 1 of 5</p>
+                <h2 id="question-text" class="text-xl font-bold text-gray-800"></h2>
+            </div>
+
+            <!-- Options Container -->
+            <div id="options-container" class="space-y-3">
+                <!-- Options dynamically inserted here -->
+            </div>
+            
+            <!-- Navigation and Submit -->
+            <div class="flex justify-between items-center pt-4">
+                <button onclick="prevQuestion()" id="prev-btn" class="px-6 py-2 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300 transition duration-150 ease-in-out opacity-50 cursor-not-allowed">
+                    Previous
+                </button>
+                <p id="time-left" class="text-lg font-semibold text-red-600">Time: 10s</p>
+                <button onclick="nextQuestion()" id="next-btn" class="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition duration-150 ease-in-out">
+                    Next
+                </button>
+                <button onclick="submitQuiz(true)" id="submit-btn" class="hidden px-6 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition duration-150 ease-in-out">
+                    Submit Quiz
+                </button>
+            </div>
+        </div>
+
+        <!-- Screen 3: Results Screen -->
+        <div id="results-screen" class="hidden space-y-6">
+            <h1 class="text-4xl font-extrabold text-green-600 text-center">Quiz Complete!</h1>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-center">
+                <div class="bg-green-50 p-4 rounded-lg shadow-md">
+                    <p class="text-5xl font-extrabold text-green-600" id="final-score">0</p>
+                    <p class="text-sm text-gray-500">Correct Answers</p>
+                </div>
+                <div class="bg-red-50 p-4 rounded-lg shadow-md">
+                    <p class="text-5xl font-extrabold text-red-600" id="final-incorrect">0</p>
+                    <p class="text-sm text-gray-500">Incorrect Answers</p>
+                </div>
+            </div>
+
+            <!-- Performance Chart -->
+            <div class="p-4 border rounded-lg shadow-inner">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">Overall Performance</h2>
+                <canvas id="performanceChart"></canvas>
+            </div>
+
+            <!-- Time Analysis Chart -->
+            <div class="p-4 border rounded-lg shadow-inner">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">Time Spent Per Question (Seconds)</h2>
+                <canvas id="timeChart"></canvas>
+            </div>
+            
+            <button onclick="window.location.reload()" class="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transform transition duration-200 ease-in-out">
+                Take Another Quiz
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        // Global Constants
+        const QUESTION_TIME_LIMIT = 10; // seconds
+
+        // Global State Variables
+        const quizData = [
+            { id: 1, category: 'science', difficulty: 'easy', question: 'What is the chemical symbol for water?', options: ['W', 'H2O', 'O2', 'H'], correct: 1 },
+            { id: 2, category: 'history', difficulty: 'medium', question: 'Who was the first person to walk on the moon?', options: ['Buzz Aldrin', 'Yuri Gagarin', 'Neil Armstrong', 'Michael Collins'], correct: 2 },
+            { id: 3, category: 'tech', difficulty: 'hard', question: 'What does SQL stand for?', options: ['Standard Query Language', 'Structured Question Logic', 'Simple Query Logic', 'Structured Query Language'], correct: 3 },
+            { id: 4, category: 'science', difficulty: 'medium', question: 'Which planet is known as the Red Planet?', options: ['Venus', 'Mars', 'Jupiter', 'Saturn'], correct: 1 },
+            { id: 5, category: 'history', difficulty: 'easy', question: 'In what year did World War II end?', options: ['1942', '1945', '1950', '1939'], correct: 1 },
+            { id: 6, category: 'tech', difficulty: 'easy', question: 'What is HTML primarily used for?', options: ['Styling web pages', 'Storing data', 'Structuring web content', 'Server-side logic'], correct: 2 },
+            { id: 7, category: 'science', difficulty: 'hard', question: 'What is the hardest natural substance on Earth?', options: ['Gold', 'Quartz', 'Diamond', 'Iron'], correct: 2 },
+            { id: 8, category: 'history', difficulty: 'hard', question: 'Which empire was ruled by Genghis Khan?', options: ['Ottoman Empire', 'Mongol Empire', 'Roman Empire', 'Mughal Empire'], correct: 1 },
+        ];
+        
+        let filteredQuestions = [];
+        let currentQuestionIndex = 0;
+        let userAnswers = []; // Stores { questionId, selectedOptionIndex, timeSpent }
+        let timerInterval = null;
+        let timeRemaining = QUESTION_TIME_LIMIT;
+        let questionStartTime = 0;
+
+        // DOM Elements
+        const configScreen = document.getElementById('config-screen');
+        const quizScreen = document.getElementById('quiz-screen');
+        const resultsScreen = document.getElementById('results-screen');
+        const questionTextEl = document.getElementById('question-text');
+        const optionsContainer = document.getElementById('options-container');
+        const questionCounterEl = document.getElementById('question-counter');
+        const timeLeftEl = document.getElementById('time-left');
+        const timerBar = document.getElementById('timer-bar');
+        const prevBtn = document.getElementById('prev-btn');
+        const nextBtn = document.getElementById('next-btn');
+        const submitBtn = document.getElementById('submit-btn');
+
+        // Utility to save the current answer before moving
+        function saveAnswer(selectedOptionIndex) {
+            const currentQuestion = filteredQuestions[currentQuestionIndex];
+            const timeSpent = Date.now() - questionStartTime;
+            
+            // Check if this question has been answered before
+            const existingAnswerIndex = userAnswers.findIndex(a => a.questionId === currentQuestion.id);
+
+            const newAnswer = {
+                questionId: currentQuestion.id,
+                selectedOptionIndex: selectedOptionIndex, // -1 means timed out/no answer
+                timeSpent: timeSpent / 1000, // Store in seconds
+            };
+
+            if (existingAnswerIndex !== -1) {
+                userAnswers[existingAnswerIndex] = newAnswer;
+            } else {
+                userAnswers.push(newAnswer);
+            }
+        }
+
+        // Timer Logic
+        function startTimer() {
+            clearInterval(timerInterval);
+            timeRemaining = QUESTION_TIME_LIMIT;
+            questionStartTime = Date.now();
+            
+            timerBar.style.width = '100%';
+            timerBar.style.backgroundColor = '#10B981'; // Green
+
+            timerInterval = setInterval(() => {
+                timeRemaining -= 0.1;
+
+                if (timeRemaining <= 0) {
+                    clearInterval(timerInterval);
+                    saveAnswer(-1); // -1 signifies a timeout/no answer
+                    
+                    // Show a message briefly
+                    const timeoutMessage = document.createElement('div');
+                    timeoutMessage.className = 'text-center text-red-600 font-bold p-2 bg-red-100 rounded-lg absolute inset-x-0 bottom-0 mb-4 transition-opacity duration-500';
+                    timeoutMessage.textContent = 'Time Up! Auto-navigating...';
+                    quizScreen.appendChild(timeoutMessage);
+                    setTimeout(() => timeoutMessage.remove(), 1500);
+
+                    // Auto-advance or submit
+                    if (currentQuestionIndex < filteredQuestions.length - 1) {
+                        currentQuestionIndex++;
+                        renderQuestion();
+                    } else {
+                        submitQuiz(false); // Auto-submit quiz
+                    }
+                }
+
+                // Update UI
+                const percentage = (timeRemaining / QUESTION_TIME_LIMIT) * 100;
+                timerBar.style.width = `${percentage}%`;
+                timeLeftEl.textContent = `Time: ${Math.max(0, timeRemaining).toFixed(1)}s`;
+
+                // Change color based on remaining time
+                if (percentage < 30) {
+                    timerBar.style.backgroundColor = '#EF4444'; // Red
+                } else if (percentage < 60) {
+                    timerBar.style.backgroundColor = '#F59E0B'; // Yellow/Orange
+                }
+            }, 100);
+        }
+
+        // Rendering Logic
+        function renderQuestion() {
+            clearInterval(timerInterval);
+
+            if (currentQuestionIndex < 0 || currentQuestionIndex >= filteredQuestions.length) {
+                // Should not happen if navigation is controlled
+                return;
+            }
+
+            const question = filteredQuestions[currentQuestionIndex];
+            const currentAnswer = userAnswers.find(a => a.questionId === question.id);
+            
+            // 1. Update text and counter
+            questionCounterEl.textContent = `Question ${currentQuestionIndex + 1} of ${filteredQuestions.length}`;
+            questionTextEl.textContent = question.question;
+
+            // 2. Clear and render options
+            optionsContainer.innerHTML = '';
+            question.options.forEach((optionText, index) => {
+                const optionEl = document.createElement('div');
+                optionEl.className = 'option-btn cursor-pointer p-4 bg-gray-100 rounded-xl shadow-sm hover:bg-blue-100 transition duration-150 ease-in-out';
+                optionEl.textContent = `${index + 1}. ${optionText}`;
+                optionEl.setAttribute('data-index', index);
+                optionEl.onclick = () => handleOptionClick(index);
+
+                // Highlight if already selected
+                if (currentAnswer && currentAnswer.selectedOptionIndex === index) {
+                    optionEl.classList.add('bg-blue-300', 'font-semibold', 'border-2', 'border-blue-500');
+                    optionEl.classList.remove('hover:bg-blue-100');
+                }
+
+                optionsContainer.appendChild(optionEl);
+            });
+
+            // 3. Update Navigation Buttons
+            prevBtn.disabled = currentQuestionIndex === 0;
+            prevBtn.classList.toggle('opacity-50', currentQuestionIndex === 0);
+            prevBtn.classList.toggle('cursor-not-allowed', currentQuestionIndex === 0);
+
+            nextBtn.classList.toggle('hidden', currentQuestionIndex === filteredQuestions.length - 1);
+            submitBtn.classList.toggle('hidden', currentQuestionIndex !== filteredQuestions.length - 1);
+
+            // 4. Restart Timer
+            startTimer();
+        }
+
+        function handleOptionClick(index) {
+            // Save the answer and time
+            saveAnswer(index);
+            
+            // Update UI immediately (clear previous highlights)
+            document.querySelectorAll('.option-btn').forEach(btn => {
+                btn.classList.remove('bg-blue-300', 'font-semibold', 'border-2', 'border-blue-500');
+                btn.classList.add('hover:bg-blue-100');
+            });
+
+            // Highlight the selected one
+            const selectedBtn = document.querySelector(`.option-btn[data-index='${index}']`);
+            if(selectedBtn) {
+                selectedBtn.classList.add('bg-blue-300', 'font-semibold', 'border-2', 'border-blue-500');
+                selectedBtn.classList.remove('hover:bg-blue-100');
+            }
+        }
+
+        // Navigation Handlers
+        function prevQuestion() {
+            if (currentQuestionIndex > 0) {
+                currentQuestionIndex--;
+                renderQuestion();
+            }
+        }
+
+        function nextQuestion() {
+            const currentQuestion = filteredQuestions[currentQuestionIndex];
+            const answer = userAnswers.find(a => a.questionId === currentQuestion.id);
+
+            // If no answer selected, save as -1 (though timer should handle this)
+            if (!answer || answer.selectedOptionIndex === undefined) {
+                 saveAnswer(-1); 
+            }
+
+            if (currentQuestionIndex < filteredQuestions.length - 1) {
+                currentQuestionIndex++;
+                renderQuestion();
+            }
+        }
+
+        // Quiz Control
+        function startQuiz() {
+            const category = document.getElementById('category').value;
+            const difficulty = document.getElementById('difficulty').value;
+
+            // 1. Filter Questions
+            filteredQuestions = quizData.filter(q => 
+                (category === 'all' || q.category === category) &&
+                (difficulty === 'all' || q.difficulty === difficulty)
+            );
+            
+            if (filteredQuestions.length === 0) {
+                alert('No questions found for the selected criteria. Try "All Categories" and "All Difficulties".');
+                return;
+            }
+
+            // 2. Initialize state
+            currentQuestionIndex = 0;
+            userAnswers = [];
+
+            // 3. Switch screens
+            configScreen.classList.add('hidden');
+            quizScreen.classList.remove('hidden');
+
+            // 4. Start the quiz
+            renderQuestion();
+        }
+
+        function submitQuiz(userInitiated) {
+            clearInterval(timerInterval);
+            
+            // Ensure the final question answer is saved if manually submitted
+            if(userInitiated) {
+                const currentQuestion = filteredQuestions[currentQuestionIndex];
+                const answer = userAnswers.find(a => a.questionId === currentQuestion.id);
+                if (!answer || answer.selectedOptionIndex === undefined) {
+                    saveAnswer(-1); // Save as no answer if user hits submit without selection
+                }
+            }
+
+            calculateAndDisplayResults();
+            quizScreen.classList.add('hidden');
+            resultsScreen.classList.remove('hidden');
+        }
+
+        // Result Analysis and Charting
+        function calculateAndDisplayResults() {
+            let correctCount = 0;
+            let incorrectCount = 0;
+            let totalTime = 0;
+            
+            const questionTimeData = [];
+            const questionLabels = [];
+            
+            userAnswers.forEach(answer => {
+                const question = filteredQuestions.find(q => q.id === answer.questionId);
+                
+                // Calculate correctness
+                if (answer.selectedOptionIndex === question.correct) {
+                    correctCount++;
+                } else {
+                    incorrectCount++;
+                }
+                
+                // Track time
+                const time = parseFloat(answer.timeSpent.toFixed(2));
+                totalTime += time;
+                questionTimeData.push(time);
+                questionLabels.push(`Q${filteredQuestions.findIndex(q => q.id === question.id) + 1}`);
+            });
+            
+            // Ensure all questions are accounted for (in case of early abandon/glitch)
+            const unanswered = filteredQuestions.length - userAnswers.length;
+            incorrectCount += unanswered; // Treat unanswered as incorrect
+
+            // 1. Display Scores
+            document.getElementById('final-score').textContent = correctCount;
+            document.getElementById('final-incorrect').textContent = incorrectCount;
+            
+            // 2. Performance Chart (Accuracy)
+            const totalQuestions = filteredQuestions.length;
+            const correctPercentage = (correctCount / totalQuestions) * 100;
+            const incorrectPercentage = (incorrectCount / totalQuestions) * 100;
+
+            new Chart(document.getElementById('performanceChart').getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Correct', 'Incorrect/Unanswered'],
+                    datasets: [{
+                        data: [correctPercentage, incorrectPercentage],
+                        backgroundColor: ['#10B981', '#EF4444'],
+                        hoverBackgroundColor: ['#059669', '#DC2626'],
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'top' },
+                        tooltip: { callbacks: { label: (context) => `${context.label}: ${context.raw.toFixed(1)}%` } }
+                    }
+                }
+            });
+
+            // 3. Time Analysis Chart
+            new Chart(document.getElementById('timeChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: questionLabels,
+                    datasets: [{
+                        label: 'Time Spent (seconds)',
+                        data: questionTimeData,
+                        backgroundColor: '#3B82F6',
+                        borderColor: '#1D4ED8',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: 'Time in Seconds' }
+                        }
+                    },
+                    plugins: {
+                        title: { display: true, text: `Total Time Spent: ${totalTime.toFixed(2)}s` }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
